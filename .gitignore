@@ -1,0 +1,26 @@
+# PIA credentials in compose file
+# (if you ever accidentally commit credentials, rotate them immediately)
+# docker-compose.yml  ← not ignored so it's version-controlled, BUT verify credentials are stripped before pushing!
+
+# Config data with potential secrets
+config/gluetun/
+
+# Large binary data
+config/plex/Library/
+config/*/logs/
+config/*/Sentry/
+config/*/asp/
+config/*/Definitions/
+config/qbittorrent/.cache/
+config/qbittorrent/cache/
+config/qbittorrent/data/
+config/qbittorrent/wireguard/
+
+# Media
+downloads/
+movies/
+tv/
+
+# Backups
+*.tar.gz
+docker-compose.yml
