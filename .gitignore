@@ -24,3 +24,8 @@ tv/
 # Backups
 *.tar.gz
 docker-compose.yml
+
+# Allow templates
+!docker-compose.template.yml
+!.env.example
+!config/*/config.template.xml

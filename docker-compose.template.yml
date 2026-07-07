@@ -1,0 +1,131 @@
+services:
+  # ─── Gluetun VPN gateway (PIA OpenVPN — PIA doesn't support WG in Gluetun) ───
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun-vpn
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - VPN_SERVICE_PROVIDER=private internet access
+      - VPN_TYPE=openvpn
+      - SERVER_REGIONS=US East
+      - OPENVPN_USER=<PIA_USERNAME>
+      - OPENVPN_PASSWORD=<PIA_PASSWORD>
+      - TZ=Australia/Sydney
+      - FIREWALL_VPN_INPUT_PORTS=8989,7878
+      - FIREWALL_OUTBOUND_SUBNETS=192.168.68.0/24,172.18.0.0/16
+    ports:
+      - "7878:7878"
+      - "8989:8989"
+    volumes:
+      - /mnt/media/config/gluetun:/gluetun
+    restart: unless-stopped
+
+  # ─── Plex Media Server ───
+  plex:
+    image: plexinc/pms-docker:latest
+    container_name: plex
+    network_mode: host
+    environment:
+      - TZ=Australia/Sydney
+      - PLEX_CLAIM=
+      - ADVERTISE_IP=http://192.168.68.63:32400
+    volumes:
+      - /mnt/media/config/plex:/config
+      - /mnt/media/tv:/data/tv
+      - /mnt/media/movies:/data/movies
+      - /mnt/media/downloads:/data/downloads
+      - /tmp/plex-transcode:/transcode
+    restart: unless-stopped
+
+  # ─── Sonarr (TV Shows, routed through Gluetun VPN) ───
+  sonarr:
+    image: linuxserver/sonarr:latest
+    container_name: sonarr
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+    volumes:
+      - /mnt/media/config/sonarr:/config
+      - /mnt/media/tv:/tv
+      - /mnt/media/downloads:/downloads
+    depends_on:
+      - gluetun
+    restart: unless-stopped
+
+  # ─── Radarr (Movies, routed through Gluetun VPN) ───
+  radarr:
+    image: linuxserver/radarr:latest
+    container_name: radarr
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+    volumes:
+      - /mnt/media/config/radarr:/config
+      - /mnt/media/movies:/movies
+      - /mnt/media/downloads:/downloads
+    depends_on:
+      - gluetun
+    restart: unless-stopped
+
+  # ─── Prowlarr (Indexer, host network for searches — no VPN) ───
+  prowlarr:
+    image: linuxserver/prowlarr:latest
+    container_name: prowlarr
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+    volumes:
+      - /mnt/media/config/prowlarr:/config
+    depends_on: []
+    restart: unless-stopped
+
+  # ─── Flaresolverr (Cloudflare bypass, host network) ───
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    network_mode: host
+    environment:
+      - TZ=Australia/Sydney
+      - LOG_LEVEL=info
+    depends_on: []
+    restart: unless-stopped
+
+  # ─── qBittorrent (built-in PIA WireGuard VPN) ───
+  qbittorrent:
+    image: ghcr.io/hotio/qbittorrent:latest
+    container_name: qbittorrent
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - UMASK=002
+      - TZ=Australia/Sydney
+      - WEBUI_PORTS=8080/tcp
+      - VPN_ENABLED=true
+      - VPN_CONF=wg
+      - VPN_PROVIDER=pia
+      - VPN_PIA_USER=<PIA_USERNAME>
+      - VPN_PIA_PASS=<PIA_PASSWORD>
+      - VPN_PIA_PREFERRED_REGION=aus
+      - VPN_LAN_NETWORK=192.168.68.0/24,127.0.0.0/8
+      - VPN_EXPOSE_PORTS_ON_LAN=8080/tcp
+      - VPN_AUTO_PORT_FORWARD=true
+      - VPN_PIA_PORT_FORWARD_PERSIST=false
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      - /mnt/media/config/qbittorrent:/config
+      - /mnt/media/downloads:/data/downloads
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    restart: unless-stopped
