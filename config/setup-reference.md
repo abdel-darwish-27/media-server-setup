@@ -40,8 +40,8 @@ Last updated: 2026-07-07
 - **PIA forwarded port:** auto-assigned (currently 39552 — changes on reconnect without persistence)
 
 ## Credentials
-- **PIA account:** p9631274 / GFxu4bzzCW
-- **qBittorrent WebUI:** admin / adminadmin
+- **PIA account:** <PIA_USERNAME> / <PIA_PASSWORD>
+- **qBittorrent WebUI:** admin / <QBITTORRENT_PASSWORD>
 - **PIA credentials file:** /mnt/media/config/pia-credentials.txt
 
 ## Port Forwarding (PIA)
@@ -54,8 +54,8 @@ Last updated: 2026-07-07
 ```bash
 cd /mnt/media
 # sudo required (unless user re-logs in for docker group)
-echo 'rich270395' | sudo -S docker compose up -d          # Start all
-echo 'rich270395' | sudo -S docker compose down           # Stop all
-echo 'rich270395' | sudo -S docker compose logs -f        # Watch logs
-echo 'rich270395' | sudo -S docker ps                     # Container status
+echo '<SUDO_PASSWORD>' | sudo -S docker compose up -d          # Start all
+echo '<SUDO_PASSWORD>' | sudo -S docker compose down           # Stop all
+echo '<SUDO_PASSWORD>' | sudo -S docker compose logs -f        # Watch logs
+echo '<SUDO_PASSWORD>' | sudo -S docker ps                     # Container status
 ```
