@@ -9,17 +9,18 @@
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Prerequisites](#prerequisites)
-3. [PIA Account Setup](#pia-account-setup)
-4. [Directory Structure](#directory-structure)
-5. [Docker & Compose Installation](#docker--compose-installation)
-6. [Service Breakdown](#service-breakdown)
-7. [Full docker-compose.yml](#full-docker-composeyml)
-8. [Step-by-Step Setup](#step-by-step-setup)
-9. [Accessing the Services](#accessing-the-services)
-10. [Troubleshooting](#troubleshooting)
-11. [Maintenance Commands](#maintenance-commands)
-12. [Backup & Recovery](#backup--recovery)
+2. [VPN Performance Benchmarks](#vpn-performance-benchmarks)
+3. [Prerequisites](#prerequisites)
+4. [PIA Account Setup](#pia-account-setup)
+5. [Directory Structure](#directory-structure)
+6. [Docker & Compose Installation](#docker--compose-installation)
+7. [Service Breakdown](#service-breakdown)
+8. [Full docker-compose.yml](#full-docker-composeyml)
+9. [Step-by-Step Setup](#step-by-step-setup)
+10. [Accessing the Services](#accessing-the-services)
+11. [Troubleshooting](#troubleshooting)
+12. [Maintenance Commands](#maintenance-commands)
+13. [Backup & Recovery](#backup--recovery)
 
 ---
 
@@ -66,6 +67,51 @@
 - qBittorrent's WireGuard runs **inside** the qbittorrent container (built into the hotio image). Other containers can't share it.
 - Gluetun is a dedicated VPN **gateway** container that multiple services can route through (`network_mode: "service:gluetun"`)
 - PIA supports WireGuard in qBittorrent's hotio image but **not** in Gluetun (Gluetun's PIA WireGuard support is limited to: AirVPN, Mullvad, NordVPN, ProtonVPN, Surfshark, Windscribe). Therefore Gluetun uses PIA OpenVPN.
+
+---
+
+## VPN Performance Benchmarks
+
+Speed tests run 2026-07-08 using `speedtest-cli` (Ookla) against the nearest Australian server.
+
+### Results
+
+| Test | Ping | Download | Upload | % of Line Rate |
+|------|------|----------|--------|----------------|
+| **Host (no VPN)** | 8 ms | **880 Mbps** | 51 Mbps | 100% |
+| **qBittorrent (WireGuard)** | 33 ms | **859 Mbps** | 47 Mbps | **98%** |
+| **Gluetun (OpenVPN)** | 10 ms | **538 Mbps** | 47 Mbps | **61%** |
+
+### Interpretation
+
+- **WireGuard runs at 98% of line rate** — barely any overhead. This is expected; WireGuard is known for minimal crypto overhead and runs in-kernel on Linux.
+- **OpenVPN hits 538 Mbps** — ~60% of line rate. The encryption overhead (TLS handshake, user-space crypto processing) is the bottleneck. This is normal for OpenVPN on consumer hardware.
+- Both are well above the ~60 Mbps that a single TCP connection from Australia to the US East Coast can achieve (bottleneck is latency/TCP window scaling, not the VPN).
+- The 33 ms ping on WireGuard vs 10 ms on OpenVPN is routing-dependent (different PIA servers/peering). It does not measurably affect torrent download performance.
+
+### Practical Impact
+
+| Activity | WireGuard (859 Mbps) | OpenVPN (538 Mbps) |
+|----------|---------------------|--------------------|
+| 4K Blu-ray remux (~50 GB) | ~8 minutes | ~13 minutes |
+| 1080p movie (~5 GB) | ~50 seconds | ~80 seconds |
+| Indexer queries (KB-scale) | indistinguishable | indistinguishable |
+
+**Bottom line:** The current split is ideal — WireGuard handles heavy torrent traffic at near-line speed, and OpenVPN's 538 Mbps is overkill for the lightweight *arr indexing/search queries it carries. No reason to change.
+
+### How to Re-Test
+
+```bash
+# Host baseline
+pip install speedtest-cli && speedtest-cli --simple
+
+# qBittorrent (WireGuard)
+docker exec qbittorrent python3 -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/sivel/speedtest-cli/master/speedtest.py').read())" --simple 2>&1
+
+# Gluetun (OpenVPN) — needs apk install first
+docker exec gluetun-vpn apk add speedtest-cli
+docker exec gluetun-vpn speedtest-cli --simple
+```
 
 ---
 
