@@ -35,7 +35,19 @@ done
 wait
 
 echo "📀 Step 4/4: Remux with mkvmerge (preserves all streams, no DV)..."
-mkvmerge_args=(-o "$OUTPUT" --default-duration 0:24000/1001fps /tmp/dv_strip_bl.hevc)
+# Auto-detect framerate from the source
+FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$INPUT" 2>/dev/null)
+if [ -z "$FPS" ] || [ "$FPS" = "0/0" ]; then
+    FPS="24000/1001"
+fi
+WARN_FPS=$(echo "$FPS" | grep -oP '^\d+')
+if [ "$WARN_FPS" = "24" ] || [ "$WARN_FPS" = "23" ]; then
+    true
+else
+    echo "⚠️  Unusual framerate detected: $FPS"
+fi
+
+mkvmerge_args=(-o "$OUTPUT" --default-duration "0:${FPS}fps" /tmp/dv_strip_bl.hevc)
 for f in /tmp/dv_strip_track_*; do
     if [ -s "$f" ]; then
         mkvmerge_args+=("$f")
