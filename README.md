@@ -2,7 +2,7 @@
 
 **Host:** Pop!_OS 24.04 LTS (Kernel 6.17) — 1TB NVMe at `/mnt/media`  
 **VPN:** Private Internet Access (PIA)  
-**Last updated:** 2026-07-08
+**Last updated:** 2026-07-08 (v2 — *arr apps moved to host network)
 
 ---
 
@@ -32,14 +32,18 @@
                     │              IP: 192.168.68.63               │
                     │                                             │
   Internet ────────►│  ┌──────────────────────────────────────┐   │
-                    │  │    GLUETUN (PIA OpenVPN, Sydney)      │   │
-                    │  │    DHCP-assigned IP: varies           │   │
-                    │  │    Ports: 8989, 7878, 9696, 8191     │   │
+                    │  │    GLUETUN (PIA OpenVPN, fallback)     │   │
+                    │  │    No services depend on it            │   │
+                    │  └──────────────────────────────────────┘   │
+                    │                                             │
+                    │  ┌──────────────────────────────────────┐   │
+                    │  │    HOST NETWORK (no VPN)              │   │
                     │  │                                       │   │
                     │  │  ┌─────────────────────────────────┐  │   │
-                    │  │  │ Sonarr  :8989  (TV shows)        │  │   │
-                    │  │  │ Radarr  :7878  (Movies)          │  │   │
-                    │  │  │ Prowlarr :9696  (Indexers)       │  │   │
+                    │  │  │ Plex      :32400 (media server)  │  │   │
+                    │  │  │ Sonarr    :8989  (TV shows)      │  │   │
+                    │  │  │ Radarr    :7878  (Movies)        │  │   │
+                    │  │  │ Prowlarr  :9696  (Indexers)      │  │   │
                     │  │  │ Flaresolverr :8191 (CF bypass)   │  │   │
                     │  │  └─────────────────────────────────┘  │   │
                     │  └──────────────────────────────────────┘   │
@@ -49,24 +53,25 @@
                     │  │    Ports: 8080, 6881                  │   │
                     │  │    Built-in WireGuard tunnel          │   │
                     │  └──────────────────────────────────────┘   │
-                    │                                             │
-                    │  ┌──────────────────────────────────────┐   │
-                    │  │    PLEX (host network, :32400)        │   │
-                    │  │    No VPN — serves local media only   │   │
-                    │  └──────────────────────────────────────┘   │
                     └─────────────────────────────────────────────┘
 ```
 
 **Traffic flow:**
-- **Sonarr/Radarr** → Search via Prowlarr (VPN'd) → Send magnet/torrent to qBittorrent → qBittorrent downloads via WireGuard → Sonarr/Radarr rename & move to library → Plex serves it
-- All indexer traffic, search requests, and metadata queries from the `*arrs` go through Gluetun's OpenVPN tunnel
-- Torrent traffic goes through qBittorrent's own WireGuard tunnel
-- Plex serves locally on host network (no VPN needed)
+- **Sonarr/Radarr** → Search via Prowlarr → Send torrent to qBittorrent → qBittorrent downloads via WireGuard → Sonarr/Radarr rename & move to library → Plex serves it
+- **All *arr and indexer traffic is on host network** (no VPN). They only communicate locally with qBittorrent and Plex
+- **Torrent traffic** is the only thing that goes through VPN — qBittorrent's built-in WireGuard tunnel to PIA
+- **Plex** serves locally on host network (no VPN needed)
 
-**Why two VPN tunnels?**
-- qBittorrent's WireGuard runs **inside** the qbittorrent container (built into the hotio image). Other containers can't share it.
-- Gluetun is a dedicated VPN **gateway** container that multiple services can route through (`network_mode: "service:gluetun"`)
-- PIA supports WireGuard in qBittorrent's hotio image but **not** in Gluetun (Gluetun's PIA WireGuard support is limited to: AirVPN, Mullvad, NordVPN, ProtonVPN, Surfshark, Windscribe). Therefore Gluetun uses PIA OpenVPN.
+**Why host network for *arr apps?**
+- The *arr apps (Sonarr, Radarr, Prowlarr) only need to talk to services on the local network — qBittorrent for downloads, Prowlarr for indexer queries
+- Running them through Gluetun's OpenVPN was causing authentication headaches (403 errors from qBittorrent, port binding conflicts)
+- Only the actual BitTorrent traffic needs VPN protection, which qBittorrent handles via its own WireGuard tunnel
+- This architecture was changed on 2026-07-08 after the initial setup proved problematic
+
+**Why qBittorrent uses WireGuard while Gluetun uses OpenVPN?**
+- qBittorrent's hotio image has built-in PIA WireGuard support
+- Gluetun does **not** support PIA WireGuard (only AirVPN, Mullvad, NordVPN, ProtonVPN, Surfshark, Windscribe)
+- WireGuard reaches ~98% of line rate, OpenVPN ~61% — qBittorrent gets the fast tunnel since it handles the actual downloads
 
 ---
 
@@ -208,52 +213,54 @@ docker compose version
 
 ## Service Breakdown
 
-### Gluetun — VPN Gateway
+### Gluetun — VPN Gateway (fallback only)
 | Field | Value |
 |-------|-------|
 | Image | `qmcgaw/gluetun:latest` |
 | Protocol | OpenVPN (PIA) |
-| Server | AU Sydney |
+| Server | US East |
 | CAP | `NET_ADMIN` (required for tunnel creation) |
-| Exposed ports | 8989, 7878, 9696, 8191 |
+| Exposed ports | None (no services depend on it) |
 
-**Why OpenVPN not WireGuard?** PIA's WireGuard implementation is not supported in Gluetun (only AirVPN, Mullvad, NordVPN, ProtonVPN, Surfshark, and Windscribe are). This may change in future Gluetun releases — to check, run: `docker run --rm qmcgaw/gluetun:latest -vpn_type wireguard -vpn_provider "private internet access"` and see if it errors.
+**Status:** Running but no services currently depend on Gluetun. The *arr apps (Sonarr, Radarr, Prowlarr, Flaresolverr) all use `network_mode: host` for simpler operation. Gluetun is kept as a fallback in case a future service needs VPN routing.
 
-**Key settings:**
-- `FIREWALL_VPN_INPUT_PORTS` — ports Gluetun should allow IN from the local network (all the services behind it)
-- `FIREWALL_OUTBOUND_SUBNETS` — local subnets the services behind Gluetun can reach (Docker bridge + LAN). Without this, the killswitch blocks all non-VPN traffic, including to qBittorrent.
+**Why OpenVPN not WireGuard?** PIA's WireGuard implementation is not supported in Gluetun (only AirVPN, Mullvad, NordVPN, ProtonVPN, Surfshark, and Windscribe are).
 
 ### Sonarr — TV Shows
 | Field | Value |
 |-------|-------|
 | Image | `linuxserver/sonarr:latest` |
 | Web UI | `http://192.168.68.63:8989` |
-| Network | `service:gluetun` (behind VPN) |
+| Network | `host` (no VPN) |
 | Volumes | config, tv library, downloads |
+| API Key | From `/mnt/media/config/sonarr/config.xml` |
 
 ### Radarr — Movies
 | Field | Value |
 |-------|-------|
 | Image | `linuxserver/radarr:latest` |
 | Web UI | `http://192.168.68.63:7878` |
-| Network | `service:gluetun` (behind VPN) |
+| Network | `host` (no VPN) |
 | Volumes | config, movies library, downloads |
+| API Key | From `/mnt/media/config/radarr/config.xml` |
 
 ### Prowlarr — Indexer Manager
 | Field | Value |
 |-------|-------|
 | Image | `linuxserver/prowlarr:latest` |
 | Web UI | `http://192.168.68.63:9696` |
-| Network | `service:gluetun` (behind VPN) |
-| Purpose | Manages torrent/usenet indexers, syncs them to Sonarr/Radarr |
+| Network | `host` (no VPN) |
+| Purpose | Manages torrent indexers, syncs them to Sonarr/Radarr |
 
 ### Flaresolverr — Cloudflare Bypass
 | Field | Value |
 |-------|-------|
 | Image | `ghcr.io/flaresolverr/flaresolverr:latest` |
-| Web UI | `http://192.168.68.63:8191` (no UI, just health check) |
-| Network | `service:gluetun` (behind VPN) |
+| Health Check | `http://192.168.68.63:8191` (no UI) |
+| Network | `host` (no VPN) |
 | Purpose | Solves Cloudflare challenges for indexers that use CF protection |
+
+> **Note:** In the initial setup (2026-07-08), Sonarr, Radarr, Prowlarr, and Flaresolverr were routed through Gluetun's OpenVPN. This caused authentication issues with qBittorrent and port binding conflicts. All *arr apps were moved to host network in a later revision on the same day.
 
 ### qBittorrent — Download Client
 | Field | Value |
@@ -279,7 +286,7 @@ The canonical compose file lives at `/mnt/media/docker-compose.yml`. Contents:
 
 ```yaml
 services:
-  # ─── Gluetun VPN gateway (PIA OpenVPN) ───
+  # ─── Gluetun VPN gateway (PIA OpenVPN) — fallback, nothing depends on it ───
   gluetun:
     image: qmcgaw/gluetun:latest
     container_name: gluetun-vpn
@@ -288,17 +295,11 @@ services:
     environment:
       - VPN_SERVICE_PROVIDER=private internet access
       - VPN_TYPE=openvpn
-      - SERVER_REGIONS=AU Sydney
+      - SERVER_REGIONS=US East
       - OPENVPN_USER=pXXXXXXX           # ← Your PIA username
       - OPENVPN_PASSWORD=YOUR_PASSWORD  # ← Your PIA password
       - TZ=Australia/Sydney
-      - FIREWALL_VPN_INPUT_PORTS=9696,8191,8989,7878
       - FIREWALL_OUTBOUND_SUBNETS=192.168.68.0/24,172.18.0.0/16
-    ports:
-      - "9696:9696"    # Prowlarr
-      - "8191:8191"    # Flaresolverr
-      - "8989:8989"    # Sonarr
-      - "7878:7878"    # Radarr
     volumes:
       - /mnt/media/config/gluetun:/gluetun
     restart: unless-stopped
@@ -320,11 +321,11 @@ services:
       - /tmp/plex-transcode:/transcode
     restart: unless-stopped
 
-  # ─── Sonarr (TV Shows) ───
+  # ─── Sonarr (TV Shows, host network) ───
   sonarr:
     image: linuxserver/sonarr:latest
     container_name: sonarr
-    network_mode: "service:gluetun"
+    network_mode: host
     environment:
       - PUID=1000
       - PGID=1000
@@ -333,15 +334,13 @@ services:
       - /mnt/media/config/sonarr:/config
       - /mnt/media/tv:/tv
       - /mnt/media/downloads:/downloads
-    depends_on:
-      - gluetun
     restart: unless-stopped
 
-  # ─── Radarr (Movies) ───
+  # ─── Radarr (Movies, host network) ───
   radarr:
     image: linuxserver/radarr:latest
     container_name: radarr
-    network_mode: "service:gluetun"
+    network_mode: host
     environment:
       - PUID=1000
       - PGID=1000
@@ -350,35 +349,29 @@ services:
       - /mnt/media/config/radarr:/config
       - /mnt/media/movies:/movies
       - /mnt/media/downloads:/downloads
-    depends_on:
-      - gluetun
     restart: unless-stopped
 
-  # ─── Prowlarr (Indexer Manager) ───
+  # ─── Prowlarr (Indexer Manager, host network) ───
   prowlarr:
     image: linuxserver/prowlarr:latest
     container_name: prowlarr
-    network_mode: "service:gluetun"
+    network_mode: host
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Australia/Sydney
     volumes:
       - /mnt/media/config/prowlarr:/config
-    depends_on:
-      - gluetun
     restart: unless-stopped
 
-  # ─── Flaresolverr (Cloudflare bypass) ───
+  # ─── Flaresolverr (Cloudflare bypass, host network) ───
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
-    network_mode: "service:gluetun"
+    network_mode: host
     environment:
       - TZ=Australia/Sydney
       - LOG_LEVEL=info
-    depends_on:
-      - gluetun
     restart: unless-stopped
 
   # ─── qBittorrent (built-in PIA WireGuard VPN) ───
@@ -399,7 +392,7 @@ services:
       - VPN_PIA_USER=pXXXXXXX             # ← Your PIA username
       - VPN_PIA_PASS=YOUR_PASSWORD        # ← Your PIA password
       - VPN_PIA_PREFERRED_REGION=aus
-      - VPN_LAN_NETWORK=192.168.68.0/24
+      - VPN_LAN_NETWORK=192.168.68.0/24,127.0.0.0/8
       - VPN_EXPOSE_PORTS_ON_LAN=8080/tcp
       - VPN_AUTO_PORT_FORWARD=true
       - VPN_PIA_PORT_FORWARD_PERSIST=false
@@ -436,37 +429,20 @@ Copy the compose file from this manual into `/mnt/media/docker-compose.yml`. Rep
 - `TZ=Australia/Sydney` → your timezone
 - `PUID=1000` / `PGID=1000` → your user/group IDs (check with `id`)
 
-### 4. Start the VPN gateway first
-```bash
-cd /mnt/media
-docker compose up -d gluetun
-```
-
-Wait ~20 seconds for the VPN to connect. Verify:
-```bash
-docker ps --format "{{.Names}} {{.Status}}"
-# Should show: gluetun-vpn Up X seconds (healthy)
-```
-
-If it's stuck restarting, check logs:
-```bash
-docker logs gluetun-vpn --tail 20
-```
-
-### 5. Start everything else
+### 4. Start everything
 ```bash
 cd /mnt/media
 docker compose up -d
 ```
 
-### 6. Verify all services
+### 5. Verify all services
 ```bash
 docker ps --format "table {{.Names}}\t{{.Status}}"
 ```
 
 Expected output:
 ```
-gluetun-vpn     Up (healthy)
+gluetun-vpn     Up (healthy)      # Fallback, nothing depends on it
 sonarr          Up
 radarr          Up
 prowlarr        Up
@@ -475,16 +451,13 @@ qbittorrent     Up
 plex            Up (healthy)
 ```
 
-### 7. Verify VPN routing
+### 6. Verify VPN routing
 ```bash
-# Check Gluetun's public IP (should be PIA, not your home IP)
-docker exec gluetun-vpn wget -qO- ifconfig.me
-
-# Check qBittorrent's public IP (should be PIA, different from Gluetun)
+# Check qBittorrent's public IP (should be PIA, not your home IP)
 docker exec qbittorrent curl -s ifconfig.me
 ```
 
-### 8. Configure the apps
+### 7. Configure the apps
 See [Accessing the Services](#accessing-the-services) below.
 
 ---
@@ -507,36 +480,28 @@ All web UIs are accessed from your local network at `http://192.168.68.63:PORT`:
 2. **Prowlarr** — Add indexers (1337x, EZTV, The Pirate Bay, etc.), then Settings → Apps → add Sonarr & Radarr
 3. **Sonarr** — Add a show, set quality profiles, set root folder to `/tv`
 4. **Radarr** — Same, root folder `/movies`
-5. **Sonarr/Radarr download clients** — Add qBittorrent at `http://qbittorrent:8080` with the admin credentials
+5. **Sonarr/Radarr download clients** — Add qBittorrent at `http://192.168.68.63:8080` (or `http://127.0.0.1:8080` from the host). Use API key authentication (set in qBittorrent config at `WebUI\APIKey`). **Do not use `localhost`** — qBittorrent's WireGuard routes localhost through the VPN tunnel, which breaks access.
 
 ---
 
 ## Troubleshooting
 
-### Gluetun crashes: "default route not found"
+### Port already in use after changing network mode
 
-**Symptom:** Container starts then immediately exits with `ERROR default route not found: in 4 route(s)`
+**Symptom:** `Failed to bind to address http://[::]:PORT: address already in use` after switching a container to `host` network mode.
 
-**Likely causes & fixes:**
+**Cause:** The old container instance is still running (lingering process in the old network namespace).
 
-1. **Port conflict** — Another container is using a port that Gluetun needs to expose
-   ```bash
-   ss -tlnp | grep -E '9696|8191|8989|7878'
-   # If any port is in use, stop the conflicting container first
-   ```
+**Fix:** Kill the lingering process and restart:
+```bash
+ss -tlnp | grep :PORT
+kill -9 <PID>
+docker compose up -d <container>
+```
 
-2. **Devices / TUN module** — Ensure `/dev/net/tun` exists
-   ```bash
-   ls -la /dev/net/tun
-   # Should show crw-rw-rw- 1 root root 10, 200 ...
-   ```
+### Sonarr/Radarr can't connect to qBittorrent (403)
 
-3. **Wrong network order** — Always start Gluetun FIRST before services that depend on it
-   ```bash
-   docker compose up -d gluetun       # start VPN first
-   sleep 20                            # wait for healthy
-   docker compose up -d               # then everything else
-   ```
+**Symptom:** Health check shows 
 
 ### "Bind for 0.0.0.0:PORT failed: port is already allocated"
 
@@ -605,8 +570,8 @@ docker compose up -d gluetun
 # Stop everything
 docker compose down
 
-# Start everything (Gluetun VPN must come up first)
-docker compose up -d gluetun && sleep 20 && docker compose up -d
+# Start everything back up
+docker compose up -d
 
 # Check VPN IPs (should both be PIA, not your home IP)
 echo "Gluetun IP:" && docker exec gluetun-vpn wget -qO- ifconfig.me
@@ -698,4 +663,4 @@ PIA WireGuard server: aus### (auto-selected by qBittorrent)
 | 2026-07-08 | Added Gluetun VPN gateway, routed Prowlarr + Flaresolverr through it |
 | 2026-07-08 | Switched Gluetun to WireGuard then back to OpenVPN (PIA WG not supported in Gluetun) |
 | 2026-07-08 | Moved Sonarr + Radarr behind Gluetun VPN — all *arr traffic now tunneled |
-| 2026-07-08 | This manual created |
+| 2026-07-08 | **v2:** Moved all *arr apps (Sonarr, Radarr, Prowlarr, Flaresolverr) to **host network** — VPN was causing authentication issues with qBittorrent. Gluetun demoted to fallback only. README, templates, and docs updated to reflect new architecture. |

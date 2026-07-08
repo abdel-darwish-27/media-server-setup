@@ -1,5 +1,5 @@
 services:
-  # ─── Gluetun VPN gateway (PIA OpenVPN — PIA doesn't support WG in Gluetun) ───
+  # ─── Gluetun VPN gateway (PIA OpenVPN) — fallback, nothing depends on it ───
   gluetun:
     image: qmcgaw/gluetun:latest
     container_name: gluetun-vpn
@@ -12,11 +12,7 @@ services:
       - OPENVPN_USER=<PIA_USERNAME>
       - OPENVPN_PASSWORD=<PIA_PASSWORD>
       - TZ=Australia/Sydney
-      - FIREWALL_VPN_INPUT_PORTS=8989,7878
       - FIREWALL_OUTBOUND_SUBNETS=192.168.68.0/24,172.18.0.0/16
-    ports:
-      - "7878:7878"
-      - "8989:8989"
     volumes:
       - /mnt/media/config/gluetun:/gluetun
     restart: unless-stopped
@@ -38,11 +34,11 @@ services:
       - /tmp/plex-transcode:/transcode
     restart: unless-stopped
 
-  # ─── Sonarr (TV Shows, routed through Gluetun VPN) ───
+  # ─── Sonarr (TV Shows, host network) ───
   sonarr:
     image: linuxserver/sonarr:latest
     container_name: sonarr
-    network_mode: "service:gluetun"
+    network_mode: host
     environment:
       - PUID=1000
       - PGID=1000
@@ -51,15 +47,13 @@ services:
       - /mnt/media/config/sonarr:/config
       - /mnt/media/tv:/tv
       - /mnt/media/downloads:/downloads
-    depends_on:
-      - gluetun
     restart: unless-stopped
 
-  # ─── Radarr (Movies, routed through Gluetun VPN) ───
+  # ─── Radarr (Movies, host network) ───
   radarr:
     image: linuxserver/radarr:latest
     container_name: radarr
-    network_mode: "service:gluetun"
+    network_mode: host
     environment:
       - PUID=1000
       - PGID=1000
@@ -68,11 +62,9 @@ services:
       - /mnt/media/config/radarr:/config
       - /mnt/media/movies:/movies
       - /mnt/media/downloads:/downloads
-    depends_on:
-      - gluetun
     restart: unless-stopped
 
-  # ─── Prowlarr (Indexer, host network for searches — no VPN) ───
+  # ─── Prowlarr (Indexer, host network) ───
   prowlarr:
     image: linuxserver/prowlarr:latest
     container_name: prowlarr
@@ -83,7 +75,6 @@ services:
       - TZ=Australia/Sydney
     volumes:
       - /mnt/media/config/prowlarr:/config
-    depends_on: []
     restart: unless-stopped
 
   # ─── Flaresolverr (Cloudflare bypass, host network) ───
@@ -94,7 +85,6 @@ services:
     environment:
       - TZ=Australia/Sydney
       - LOG_LEVEL=info
-    depends_on: []
     restart: unless-stopped
 
   # ─── qBittorrent (built-in PIA WireGuard VPN) ───

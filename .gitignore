@@ -29,3 +29,26 @@ docker-compose.yml
 !docker-compose.template.yml
 !.env.example
 !config/*/config.template.xml
+
+# Runtime config files (DBs, logs, cache, PIDs)
+config/**/*.db
+config/**/*.db-shm
+config/**/*.db-wal
+config/**/*.db.bak
+config/**/*.pid
+config/**/logs/
+config/**/logs/*
+config/**/log.db
+config/**/xdg/
+config/**/MediaCover/
+config/**/lockfile
+config/**/qBittorrent-data.conf
+config/**/qBittorrent.conf.bak
+config/**/feeds.json
+config/**/categories.json
+config/**/watched_folders.json
+config/**/web_clientdata.json
+config/**/pia-*.json
+config/**/pia-*
+config/**/.cache/
+config/gluetun/
