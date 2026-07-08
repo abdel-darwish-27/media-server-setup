@@ -74,8 +74,8 @@ curl "http://localhost:32400/library/sections/1/refresh?X-Plex-Token=<PLEX_TOKEN
 - Torrent files store in `/tmp/`; add via API or copy to qBittorrent watch folder
 
 ## Network Architecture
-- **Prowlarr + Flaresolverr:** Host network — direct internet (bypasses Cloudflare)
-- **qBittorrent:** Host network — own PIA WireGuard VPN (port 8080)
-- **Radarr + Sonarr:** Behind Gluetun PIA OpenVPN (ports 7878, 8989)
-- **Gluetun VPN:** Docker bridge, US East
 - **Plex:** Host network (port 32400)
+- **Sonarr + Radarr:** Host network (ports 8989, 7878)
+- **Prowlarr + Flaresolverr:** Host network (ports 9696, 8191)
+- **qBittorrent:** Docker bridge — own PIA WireGuard VPN (port 8080)
+- **Gluetun VPN:** Docker bridge, US East — fallback only, nothing depends on it
