@@ -2,7 +2,7 @@
 
 **Host:** Pop!_OS 24.04 LTS (Kernel 6.17) — 1TB NVMe at `/mnt/media`  
 **VPN:** Private Internet Access (PIA)  
-**Last updated:** 2026-07-08 (v2 — *arr apps moved to host network)
+**Last updated:** 2026-07-09 (v3 — path mapping troubleshooting)
 
 ---
 
@@ -485,6 +485,8 @@ All web UIs are accessed from your local network at `http://192.168.68.63:PORT`:
 ---
 
 ## Troubleshooting
+
+- All `*arr` import failures due to Docker path mismatches — see [*Arr Import Failures](./docs/SETUP_AND_TROUBLESHOOTING.md#arr-import-failures-due-to-path-mismatch-2026-07-09)
 
 ### Port already in use after changing network mode
 
