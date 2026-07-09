@@ -217,6 +217,8 @@ If a download is already stuck (queue empty, file on disk but not imported), use
 
 ## Useful URL
 
+Dashboard: `http://192.168.68.63:5000/entertainment/` — unified hub with links to all services
+
 Sonarr API key:
 ```
 grep ApiKey /mnt/media/config/sonarr/config.xml
