@@ -1,0 +1,2 @@
+Flaresolverr setup:
+If not running, run: sudo docker run -d --name flaresolverr --restart unless-stopped -e TZ=Australia/Sydney -e LOG_LEVEL=info -p 8191:8191 ghcr.io/flaresolverr/flaresolverr:latest

@@ -2,7 +2,7 @@
 
 **Host:** Pop!_OS 24.04 LTS (Kernel 6.17) — 1TB NVMe at `/mnt/media`  
 **VPN:** Private Internet Access (PIA)  
-**Last updated:** 2026-07-09 (v3 — path mapping troubleshooting)
+**Last updated:** 2026-07-10 (v4 — indexer, qBittorrent settings, Legends install)
 
 ---
 

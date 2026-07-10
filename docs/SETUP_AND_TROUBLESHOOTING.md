@@ -1,6 +1,6 @@
 # Media Server Setup & Troubleshooting
 
-Last updated: 2026-07-09
+Last updated: 2026-07-10
 
 ---
 
@@ -63,7 +63,7 @@ volumes:
 
 ## qBittorrent Seeding Limits
 
-Configured via API (set 2026-07-09):
+Configured via API (set 2026-07-09, updated 2026-07-10):
 
 | Setting | Value | Meaning |
 |---------|-------|---------|
@@ -71,9 +71,11 @@ Configured via API (set 2026-07-09):
 | `max_ratio` | `2.0` | Stop seeding at 200% ratio |
 | `max_seeding_time_enabled` | `true` | Enable time limit |
 | `max_seeding_time` | `168` | Stop seeding after 168 hours (7 days) |
-| `max_ratio_act` | `1` | **Remove** torrent when limit hit (0=pause, 1=remove, 2=superseed) |
+| `max_ratio_act` | `0` | **Pause** torrent when limit hit (0=pause, 1=remove, 2=superseed) |
 
-**Result**: Torrents seed until ratio 2.0 OR 7 days, whichever comes first, then auto-remove.
+> **Note:** `max_ratio_act` was changed from `1` (remove) to `0` (pause) on 2026-07-10. Sonarr warns that removing completed downloads before it can import them causes missing files. With `0`, torrents pause at the limit and Sonarr imports at its own pace. Manually remove paused torrents once verified in Plex.
+
+**Result**: Torrents pause at ratio 2.0 OR 7 days, whichever comes first, and stay paused for Sonarr/Radarr to import.
 
 ### API command to change:
 ```bash
@@ -83,7 +85,7 @@ curl -s -X POST "http://localhost:8080/api/v2/app/setPreferences" \
     "max_ratio": 2.0,
     "max_seeding_time_enabled": true,
     "max_seeding_time": 168,
-    "max_ratio_act": 1
+    "max_ratio_act": 0
   }'
 ```
 
@@ -212,6 +214,63 @@ If a download is already stuck (queue empty, file on disk but not imported), use
 - The qBittorrent category save path must use the **container-internal** path (e.g., `/media/downloads`), not a path that only exists on the host.
 - Any new category created in qBittorrent for an *arr app must have a corresponding remote path mapping in that *arr app's settings.
 - After changing categories.json, restart qBittorrent (`docker compose restart qbittorrent`) for new torrents to use the corrected path.
+
+---
+
+## 2026-07-10 Legends (2026) Download Incident
+
+**What happened:**
+1. Added "Legends (2026)" (TVDB 453615) to Sonarr — 6 episodes, S01
+2. Sonarr search returned 0 results because 1337x indexer was backoffed (6+ hours of failures in Prowlarr)
+3. Manually found releases via LimeTorrents (2160p NF WEB-DL, Dolby Atmos, 6.7-10.3GB each)
+4. Added to qBittorrent with **wrong category**: `radarr` instead of `tv-sonarr`
+5. Sonarr couldn't see the torrents — wrong category, so queue stayed empty
+6. qBittorrent had `max_ratio_act=1` (remove on ratio hit) — Sonarr warned about premature removal
+
+**What was done:**
+- Changed all Legend torrents category from `radarr` → `tv-sonarr` via qBittorrent API
+- Ran `DownloadedEpisodesScan` in Sonarr — imported 4 completed episodes via hardlink
+- Changed `max_ratio_act` from `1` (remove) to `0` (pause) in qBittorrent
+- 2 remaining episodes (E05, E06) still downloading — auto-import when complete
+
+**Lessons:**
+- When adding torrents manually to qBittorrent for an *arr app, always use the correct category (`tv-sonarr` for Sonarr, `radarr` for Radarr)
+- If Sonarr search returns 0 results, check indexer health via Prowlarr before troubleshooting further
+- `max_ratio_act=1` is risky — change to `0` unless you're sure Sonarr/Radarr will import fast enough
+- Prowlarr indexers can go down individually — check with: `curl -s "http://localhost:9696/api/v1/search?query=test&indexerIds=N"` (1=1337x, 4=LimeTorrents)
+
+---
+
+## Manually Adding a TV Show When Indexers Are Backoffed
+
+If Sonarr's automatic search fails due to indexer backoff, you can still grab releases via Prowlarr's API directly and add them to qBittorrent:
+
+### 1. Search via Prowlarr
+```bash
+PROMARR_KEY="$(grep ApiKey /mnt/media/config/prowlarr/config.xml | sed 's/.*<ApiKey>//;s/<\\/ApiKey>//')"
+curl -s "http://localhost:9696/api/v1/search?query=SHOW+NAME+2160p&limit=20&apiKey=$PROMARR_KEY" --max-time 45
+```
+> Note: Indexer IDs vary. Check Prowlarr settings → Indexers for the correct IDs.
+
+### 2. Add to qBittorrent with the Correct Category
+```bash
+# Get the magnet link
+curl -sL -o /dev/null -w '%{redirect_url}' "PROWLARR_DOWNLOAD_URL"
+
+# Add to qBittorrent with category tv-sonarr or radarr
+curl -s -b /tmp/qb_cookies -X POST 'http://localhost:8080/api/v2/torrents/add' \
+  -F 'urls=MAGNET_LINK' \
+  -F 'savepath=/media/downloads' \
+  -F 'category=tv-sonarr'  # ← CRITICAL: must match the *arr app's category
+```
+
+### 3. Trigger Sonarr Import
+Once torrents complete, Sonarr auto-imports them if the category is correct. Alternatively:
+```bash
+curl -X POST "http://localhost:8989/api/v3/command?apiKey=$SONARR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "DownloadedEpisodesScan"}'
+```
 
 ---
 
