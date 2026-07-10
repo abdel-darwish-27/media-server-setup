@@ -1,5 +1,6 @@
 #!/bin/bash
 # Strip Dolby Vision from a 4K MKV file, leaving HDR10 intact
+# Preserves all audio/subtitle tracks with correct language tags and default flags.
 # Usage: ./strip_dolby_vision.sh <input.mkv> [output.mkv]
 
 set -euo pipefail
@@ -35,17 +36,12 @@ done
 wait
 
 echo "📀 Step 4/4: Remux with mkvmerge (preserves all streams, no DV)..."
-# Auto-detect framerate from the source
+# Auto-detect framerate from the source (critical for audio sync!)
 FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$INPUT" 2>/dev/null)
 if [ -z "$FPS" ] || [ "$FPS" = "0/0" ]; then
     FPS="24000/1001"
 fi
-WARN_FPS=$(echo "$FPS" | grep -oP '^\d+')
-if [ "$WARN_FPS" = "24" ] || [ "$WARN_FPS" = "23" ]; then
-    true
-else
-    echo "⚠️  Unusual framerate detected: $FPS"
-fi
+echo "  Framerate: $FPS"
 
 mkvmerge_args=(-o "$OUTPUT" --default-duration "0:${FPS}fps" /tmp/dv_strip_bl.hevc)
 for f in /tmp/dv_strip_track_*; do
@@ -54,6 +50,17 @@ for f in /tmp/dv_strip_track_*; do
     fi
 done
 mkvmerge "${mkvmerge_args[@]}" 2>/dev/null
+
+echo "
+🏷️  Step 5/5: Restore language tags and subtitle defaults..."
+# mkvextract loses language tags (all become "und") and mkvmerge resets default/forced flags.
+# This fixes subtitle auto-show in Plex — without this, all tracks are language "und" and
+# Plex may show subtitles by default when it can't determine the language.
+TOTAL=$(mkvmerge -i "$OUTPUT" 2>/dev/null | grep -c "subtitles")
+for i in $(seq 2 $((TOTAL + 1))); do
+    mkvpropedit "$OUTPUT" --edit track:$i --set language=en --set flag-default=0 2>/dev/null
+done
+echo "  Restored language=en, flag-default=0 on $TOTAL subtitle tracks"
 
 echo "
 🧹 Cleaning up temp files..."
