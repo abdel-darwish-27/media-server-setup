@@ -296,6 +296,44 @@ curl -X POST "http://localhost:8989/api/v3/command?apiKey=$SONARR_KEY" \
 
 ---
 
+## Plex Auto-Scan via Radarr & Sonarr
+
+**Problem:** New content wasn't appearing in Plex until a manual scan was triggered.
+
+**Root cause:** No Plex connection configured in Radarr/Sonarr — they never notified Plex after importing.
+
+**Fix (2026-07-14):** Added Plex Media Server connections to both:
+
+**Radarr:**
+```
+Settings → Connections → Add → Plex Media Server
+  Host: localhost
+  Port: 32400
+  Auth Token: <from Plex Preferences.xml>
+  Update Library: ✓
+  Trigger on: Download (when file is imported)
+```
+
+**Sonarr:**
+```
+Settings → Connections → Add → Plex Media Server
+  Host: localhost
+  Port: 32400
+  Auth Token: <from Plex Preferences.xml>
+  Update Library: ✓
+  Trigger on: Import Complete (when episode is imported)
+```
+
+**Finding the Plex token:**
+```bash
+grep -oP 'PlexOnlineToken="\K[^"]+' \
+  /mnt/media/config/plex/Library/Application\ Support/Plex\ Media\ Server/Preferences.xml
+```
+
+**How it works:** After Radarr/Sonarr import a new file, they call Plex's library refresh API automatically. No more manual scans needed.
+
+---
+
 ## Useful URL
 
 Dashboard: `http://192.168.68.63:5000/entertainment/` — unified hub (links are host-aware,
