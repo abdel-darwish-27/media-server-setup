@@ -1,6 +1,6 @@
 # Media Server Setup & Troubleshooting
 
-Last updated: 2026-07-10
+Last updated: 2026-07-14
 
 ---
 
@@ -274,9 +274,32 @@ curl -X POST "http://localhost:8989/api/v3/command?apiKey=$SONARR_KEY" \
 
 ---
 
+## IPTorrents Private Tracker
+
+**Status:** Active (added 2026-07-14)
+**Login:** iptorrents.com (u: `ad510`, passkey in cr... cr... or config)
+
+**Prowlarr integration:**
+- IPTorrents uses Cardigann (HTML scraping) — no native Torznab API
+- Cookie auth: `uid=<userid>; pass=<cookie_string>`
+- Known issue: Prowlarr's Cardigann definition has DNS/SSL issues with IPTorrents
+  (see: Prowlarr/Prowlarr#1883 — closed "not planned")
+- **Workaround:** Add directly via Prowlarr web UI at http://192.168.68.63:9696
+  - Select IPTorrents from the indexer list
+  - Set Cookie and User-Agent from your browser session
+- **Fallback:** RSS feed with passkey works directly:
+  ```
+  https://iptorrents.com/t.rss?u=<userid>;tp=<passkey>;<categories>
+  ```
+
+**Donor info:** $10 one-time donation on signup.php gives 1-month VIP + 10GB upload credit
+
+---
+
 ## Useful URL
 
-Dashboard: `http://192.168.68.63:5000/entertainment/` — unified hub with links to all services
+Dashboard: `http://192.168.68.63:5000/entertainment/` — unified hub (links are host-aware,
+works from LAN, VPN, or Tailscale automatically)
 
 Sonarr API key:
 ```
