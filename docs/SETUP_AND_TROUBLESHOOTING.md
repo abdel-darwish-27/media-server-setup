@@ -337,7 +337,7 @@ grep -oP 'PlexOnlineToken="\K[^"]+' \
 ## Useful URL
 
 Dashboard: `http://192.168.68.63:5000/entertainment/` — unified hub (links are host-aware,
-works from LAN, VPN, or Tailscale automatically)
+works from LAN, VPN, or Tailscale automatically). Auth: admin/password.
 
 Sonarr API key:
 ```
